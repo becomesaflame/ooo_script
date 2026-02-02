@@ -25,6 +25,8 @@
  * 
  * Notes:
  * - Out of Office events cannot have descriptions (Google Calendar restriction)
+ * - Out of Office events cannot be all-day; all-day #OOO events are converted to
+ *   timed events (12:00am first day → 12:00am day after last day)
  * - Handles recurring events by expanding them into individual instances
  * - Checks for existing OOO events to avoid duplicates
  */
@@ -85,13 +87,25 @@ function createOOOEventsFromHashtag() {
 
         if (title.includes('#OOO') || description.includes('#OOO')) {
             foundOOOEvents++;
-            const eventStart = event.start.dateTime ? new Date(event.start.dateTime) : new Date(event.start.date);
-            const eventEnd = event.end.dateTime ? new Date(event.end.dateTime) : new Date(event.end.date);
             const isAllDay = !event.start.dateTime;
+            let eventStart, eventEnd;
+
+            if (isAllDay) {
+                // Out of Office events cannot be all-day. Convert to timed:
+                // 12:00am on first day → 12:00am on day following last day.
+                // event.end.date is already exclusive (day after last day) in Google's format.
+                const startDateStr = event.start.date;
+                const endDateStr = event.end.date;
+                eventStart = new Date(startDateStr + 'T00:00:00');
+                eventEnd = new Date(endDateStr + 'T00:00:00');
+            } else {
+                eventStart = new Date(event.start.dateTime);
+                eventEnd = new Date(event.end.dateTime);
+            }
 
             Logger.log(`#${foundOOOEvents}: Found #OOO event: "${title}" at ${eventStart.toLocaleString()}`);
 
-            if (!hasExactOOOEvent(calendarId, eventStart, eventEnd, isAllDay)) {
+            if (!hasExactOOOEvent(calendarId, eventStart, eventEnd)) {
                 const oooEvent = {
                     summary: 'Out of Office',
                     eventType: 'outOfOffice',
@@ -99,15 +113,17 @@ function createOOOEventsFromHashtag() {
                     end: {}
                 };
 
+                const tz = event.start.timeZone || calendar.getTimeZone();
                 if (isAllDay) {
-                    oooEvent.start.date = Utilities.formatDate(eventStart, 'UTC', 'yyyy-MM-dd');
-                    oooEvent.end.date = Utilities.formatDate(eventEnd, 'UTC', 'yyyy-MM-dd');
+                    // Use date strings directly so API interprets as midnight in the timezone
+                    oooEvent.start.dateTime = event.start.date + 'T00:00:00';
+                    oooEvent.end.dateTime = event.end.date + 'T00:00:00';
                 } else {
                     oooEvent.start.dateTime = eventStart.toISOString();
                     oooEvent.end.dateTime = eventEnd.toISOString();
-                    oooEvent.start.timeZone = event.start.timeZone || calendar.getTimeZone();
-                    oooEvent.end.timeZone = event.end.timeZone || calendar.getTimeZone();
                 }
+                oooEvent.start.timeZone = tz;
+                oooEvent.end.timeZone = event.end.timeZone || tz;
 
                 Calendar.Events.insert(oooEvent, calendarId);
                 created++;
@@ -123,7 +139,7 @@ function createOOOEventsFromHashtag() {
     return { created: created, skipped: skipped };
 }
 
-function hasExactOOOEvent(calendarId, startTime, endTime, isAllDay) {
+function hasExactOOOEvent(calendarId, startTime, endTime) {
     const searchStart = new Date(startTime.getTime() - 60000);
     const searchEnd = new Date(endTime.getTime() + 60000);
 

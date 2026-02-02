@@ -2,9 +2,11 @@
 
 A Google Apps Script that automatically creates Google Calendar "Out of Office" events for any calendar event containing `#OOO` in the title or description. This integrates with Grafana OnCall, which syncs Out of Office events to automatically generate shift swap requests for on-call coverage.
 
+When a user has events in their personal Google Calendar that they can't be on call for, they can tag them with `#OOO` and invite their work calendar account. The script will create a corresponding Out of Office event that can trigger Grafana OnCall's shift swap request. 
+
 ## How It Works
 
-1. Scans your primary Google Calendar for events in the next 90 days
+1. Scans your work account's primary Google Calendar for events in the next 90 days
 2. Looks for `#OOO` in event titles or descriptions (including recurring events)
 3. Creates matching Out of Office events if they don't already exist
 4. Grafana OnCall syncs these OOO events within approximately 1 hour
@@ -109,5 +111,6 @@ If you are using Grafana OnCall OSS:
 ## Notes
 
 - Out of Office events cannot have descriptions (Google Calendar restriction)
+- Out of Office events cannot be all-day in Google Calendar. When an all-day event is tagged with `#OOO`, the script converts it to a timed event: **12:00am on the first day** through **12:00am on the day following the last day**
 - The script checks for existing OOO events to avoid duplicates
 - Grafana OnCall typically syncs within approximately 1 hour
